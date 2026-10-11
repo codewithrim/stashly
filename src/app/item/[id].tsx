@@ -22,12 +22,36 @@ import { BorderRadius, Spacing, Typography } from '@/constants/theme';
 export default function ItemDetailScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getItemById, deleteItem, toggleArchive, setSelectedTag } = useItems();
+  const { getItemById, deleteItem, toggleArchive, setSelectedTag, getSignedUrl } = useItems();
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
   const item = getItemById(id);
+
+  const isDirectUri =
+    item?.type === 'image' &&
+    item.image_path &&
+    (item.image_path.startsWith('file:') ||
+      item.image_path.startsWith('content:') ||
+      item.image_path.startsWith('http'));
+
+  const [remoteSignedUri, setRemoteSignedUri] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    let isCurrent = true;
+    if (item?.type === 'image' && item.image_path && !isDirectUri) {
+      getSignedUrl(item.image_path).then((url) => {
+        if (isCurrent) {
+          setRemoteSignedUri(url);
+        }
+      });
+    }
+    return () => {
+      isCurrent = false;
+    };
+  }, [item?.type, item?.image_path, isDirectUri, getSignedUrl]);
+
+  const displayImageUri = isDirectUri ? item?.image_path : remoteSignedUri;
 
   if (!item) {
     return (
@@ -155,14 +179,14 @@ export default function ItemDetailScreen() {
         )}
 
         {/* Image Viewer (if image) */}
-        {item.type === 'image' && item.image_path && (
+        {item.type === 'image' && (displayImageUri || item.image_path) && (
           <View
             style={[
               styles.imageContainer,
               { borderColor: theme.border, backgroundColor: theme.card },
             ]}>
             <Image
-              source={{ uri: item.image_path }}
+              source={{ uri: displayImageUri || item.image_path || '' }}
               style={styles.detailImage}
               resizeMode="contain"
             />

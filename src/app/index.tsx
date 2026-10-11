@@ -11,12 +11,14 @@ import {
 import { Href, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/contexts/auth.context';
 import { useItems } from '@/contexts/items.context';
 import { ItemCard } from '@/components/items/ItemCard';
 import { FilterChips } from '@/components/ui/FilterChips';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { ItemListSkeleton } from '@/components/ui/LoadingSkeleton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTheme } from '@/hooks/use-theme';
 import { BorderRadius, Spacing, TouchTarget, Typography } from '@/constants/theme';
 import { SavedItem } from '@/types/item';
@@ -37,8 +39,10 @@ export default function InboxScreen() {
     refreshItems,
     toggleArchive,
   } = useItems();
+  const { user, signOut } = useAuth();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -129,6 +133,20 @@ export default function InboxScreen() {
             {counts.all} {counts.all === 1 ? 'item' : 'items'} saved
           </Text>
         </View>
+
+        {user && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            hitSlop={12}
+            onPress={() => setShowLogoutDialog(true)}
+            style={[
+              styles.userLogoutBtn,
+              { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+            ]}>
+            <Ionicons name="log-out-outline" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -241,6 +259,19 @@ export default function InboxScreen() {
         ]}>
         <Ionicons name="add" size={28} color={theme.primaryForeground} />
       </TouchableOpacity>
+
+      <ConfirmDialog
+        visible={showLogoutDialog}
+        title="Log out?"
+        message="Are you sure you want to log out of Stashly?"
+        confirmLabel="Log Out"
+        isDestructive
+        onConfirm={async () => {
+          setShowLogoutDialog(false);
+          await signOut();
+        }}
+        onCancel={() => setShowLogoutDialog(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -256,6 +287,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.two,
     paddingBottom: Spacing.one,
+  },
+  userLogoutBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   appName: {
     fontSize: Typography.xxl,

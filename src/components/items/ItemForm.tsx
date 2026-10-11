@@ -20,7 +20,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { validateItemInput } from '@/utils/validation';
 import { saveDraft, getDraft, clearDraft } from '@/services/draft.service';
 import { useTheme } from '@/hooks/use-theme';
-import { BorderRadius, Spacing, TouchTarget, Typography } from '@/constants/theme';
+import { BorderRadius, Spacing, Typography } from '@/constants/theme';
 
 export interface ItemFormValues {
   type: ItemType;
@@ -34,6 +34,7 @@ export interface ItemFormValues {
 export interface ItemFormProps {
   initialItem?: SavedItem;
   initialType?: ItemType;
+  initialValues?: Partial<ItemFormValues>;
   onSubmit: (values: ItemFormValues) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
@@ -42,6 +43,7 @@ export interface ItemFormProps {
 export function ItemForm({
   initialItem,
   initialType = 'note',
+  initialValues,
   onSubmit,
   onCancel,
   isLoading = false,
@@ -49,12 +51,24 @@ export function ItemForm({
   const theme = useTheme();
   const isEditing = Boolean(initialItem);
 
-  const [type, setType] = useState<ItemType>(initialItem?.type ?? initialType);
-  const [title, setTitle] = useState(initialItem?.title ?? '');
-  const [content, setContent] = useState(initialItem?.content ?? '');
-  const [url, setUrl] = useState(initialItem?.url ?? '');
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [tags, setTags] = useState<string[]>(initialItem?.tags ?? []);
+  const [type, setType] = useState<ItemType>(
+    initialItem?.type ?? initialValues?.type ?? initialType
+  );
+  const [title, setTitle] = useState(
+    initialItem?.title ?? initialValues?.title ?? ''
+  );
+  const [content, setContent] = useState(
+    initialItem?.content ?? initialValues?.content ?? ''
+  );
+  const [url, setUrl] = useState(
+    initialItem?.url ?? initialValues?.url ?? ''
+  );
+  const [imageUri, setImageUri] = useState<string | null>(
+    initialValues?.imageUri ?? null
+  );
+  const [tags, setTags] = useState<string[]>(
+    initialItem?.tags ?? initialValues?.tags ?? []
+  );
 
   const [errors, setErrors] = useState<{
     title?: string;

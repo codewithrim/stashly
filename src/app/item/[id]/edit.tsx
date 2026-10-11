@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ItemForm, ItemFormValues } from '@/components/items/ItemForm';
 import { useItems } from '@/contexts/items.context';
@@ -37,10 +37,12 @@ export default function EditItemScreen() {
         url: item.type === 'link' ? values.url : null,
         image_path: item.type === 'image' ? (values.imageUri ?? item.image_path) : null,
         tags: values.tags,
+        imageUri: values.imageUri, // Passed to context for Supabase upload
       });
       router.back();
     } catch (error) {
-      console.error('Failed to update item:', error);
+      const message = error instanceof Error ? error.message : 'Something went wrong.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

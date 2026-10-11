@@ -40,6 +40,12 @@ export function validateUrl(url: string): string | null {
   }
 }
 
+export function extractFirstUrl(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(/https?:\/\/[^\s]+/i);
+  return match ? match[0] : null;
+}
+
 export function normalizeTags(tags: string[]): string[] {
   const seen = new Set<string>();
   const normalized: string[] = [];

@@ -1,25 +1,58 @@
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Href, Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { AuthProvider, useAuth } from '@/contexts/auth.context';
 import { ItemsProvider } from '@/contexts/items.context';
 import { Colors } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+function RootNavigation() {
+  const { session, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
 
   useEffect(() => {
-    SplashScreen.hideAsync();
-  }, []);
+    if (isLoading) return;
+
+    const inAuthGroup = (segments[0] as string) === '(auth)';
+
+    if (!session && !inAuthGroup) {
+      // Redirect unauthenticated users to login
+      router.replace('/(auth)/login' as Href);
+    } else if (session && inAuthGroup) {
+      // Redirect authenticated users away from auth screens
+      router.replace('/');
+    }
+  }, [session, isLoading, segments, router]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
+
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: theme.background,
+        }}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <ItemsProvider>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: {
@@ -55,7 +88,25 @@ export default function RootLayout() {
             presentation: 'modal',
           }}
         />
+        <Stack.Screen
+          name="(auth)"
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack>
     </ItemsProvider>
+  );
+}
+
+export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  return (
+    <AuthProvider>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <RootNavigation />
+    </AuthProvider>
   );
 }

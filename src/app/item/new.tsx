@@ -1,14 +1,34 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { Alert, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ItemForm, ItemFormValues } from '@/components/items/ItemForm';
 import { useItems } from '@/contexts/items.context';
 import { useTheme } from '@/hooks/use-theme';
+import { extractFirstUrl } from '@/utils/validation';
 
 export default function NewItemScreen() {
   const theme = useTheme();
   const { createItem } = useItems();
   const [loading, setLoading] = useState(false);
+  const params = useLocalSearchParams<{
+    url?: string;
+    text?: string;
+    title?: string;
+    type?: 'note' | 'link' | 'image';
+  }>();
+
+  const detectedUrl = params.url || (params.text ? extractFirstUrl(params.text) : null);
+  const isLink = Boolean(detectedUrl);
+
+  const sharedUrl = detectedUrl || '';
+  const sharedText = detectedUrl && params.text ? params.text.replace(detectedUrl, '').trim() : (params.text || '');
+
+  const initialValues: Partial<ItemFormValues> = {
+    type: params.type || (isLink ? 'link' : 'note'),
+    title: params.title || '',
+    url: sharedUrl,
+    content: sharedText,
+  };
 
   const handleSubmit = async (values: ItemFormValues) => {
     setLoading(true);
@@ -17,13 +37,15 @@ export default function NewItemScreen() {
         type: values.type,
         title: values.title,
         content: values.content,
-        url: values.url,
-        image_path: values.imageUri, // In Stage 1: local image URI stored in image_path
+        url: values.url || undefined,
+        image_path: values.type === 'image' ? values.imageUri : undefined,
         tags: values.tags,
+        imageUri: values.imageUri, // Passed to context for Supabase upload
       });
       router.back();
     } catch (error) {
-      console.error('Failed to create item:', error);
+      const message = error instanceof Error ? error.message : 'Something went wrong.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }
@@ -32,6 +54,7 @@ export default function NewItemScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ItemForm
+        initialValues={initialValues}
         onSubmit={handleSubmit}
         onCancel={() => router.back()}
         isLoading={loading}

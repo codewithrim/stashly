@@ -1,6 +1,7 @@
 import {
   validateTitle,
   validateUrl,
+  extractFirstUrl,
   normalizeTags,
   validateItemInput,
 } from '../../src/utils/validation';
@@ -50,6 +51,20 @@ describe('validation utils', () => {
     it('lowercases, strips leading hashes, trims, and deduplicates', () => {
       const tags = ['#React', 'react', '  NodeJS  ', '#NODEJS', '', '   '];
       expect(normalizeTags(tags)).toEqual(['react', 'nodejs']);
+    });
+  });
+
+  describe('extractFirstUrl', () => {
+    it('extracts http and https URLs from text strings', () => {
+      expect(extractFirstUrl('Check this out: https://expo.dev/docs for info')).toBe(
+        'https://expo.dev/docs'
+      );
+      expect(extractFirstUrl('http://example.org is a site')).toBe('http://example.org');
+    });
+
+    it('returns null when no URL is found', () => {
+      expect(extractFirstUrl('Just a regular note without links')).toBeNull();
+      expect(extractFirstUrl('')).toBeNull();
     });
   });
 

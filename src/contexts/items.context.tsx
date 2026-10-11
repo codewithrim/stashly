@@ -1,5 +1,21 @@
-import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
-import { CreateItemInput, FilterCategory, ItemType, SavedItem, UpdateItemInput } from '@/types/item';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+} from 'react';
+import { CreateItemInput, FilterCategory, SavedItem, UpdateItemInput } from '@/types/item';
+import {
+  fetchUserItems,
+  createSavedItem,
+  updateSavedItem,
+  deleteSavedItem,
+  toggleItemArchive,
+} from '@/services/items.service';
+import { uploadImage, getSignedImageUrl, deleteImage } from '@/services/storage.service';
+import { useAuth } from './auth.context';
 
 interface ItemsContextType {
   items: SavedItem[];
@@ -14,160 +30,195 @@ interface ItemsContextType {
   isLoading: boolean;
   error: string | null;
   refreshItems: () => Promise<void>;
-  createItem: (input: CreateItemInput) => Promise<SavedItem>;
-  updateItem: (id: string, input: UpdateItemInput) => Promise<SavedItem>;
+  createItem: (input: CreateItemInput & { imageUri?: string | null }) => Promise<SavedItem>;
+  updateItem: (id: string, input: UpdateItemInput & { imageUri?: string | null }) => Promise<SavedItem>;
   deleteItem: (id: string) => Promise<void>;
   toggleArchive: (id: string) => Promise<void>;
   getItemById: (id: string) => SavedItem | undefined;
+  getSignedUrl: (imagePath: string) => Promise<string | null>;
 }
 
 const ItemsContext = createContext<ItemsContextType | null>(null);
 
-// Initial items to allow immediate interaction during Foundation testing
-const INITIAL_MOCK_ITEMS: SavedItem[] = [
-  {
-    id: 'sample-note-1',
-    owner_id: 'local-user',
-    type: 'note',
-    title: 'Productivity principles',
-    content: '1. Focus on high leverage tasks.\n2. Write down thoughts to free up RAM.\n3. Review saved items weekly.',
-    url: null,
-    image_path: null,
-    tags: ['productivity', 'habits'],
-    is_archived: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-  },
-  {
-    id: 'sample-link-1',
-    owner_id: 'local-user',
-    type: 'link',
-    title: 'Expo Router Documentation',
-    content: 'File-based routing for React Native and web.',
-    url: 'https://docs.expo.dev/router/introduction',
-    image_path: null,
-    tags: ['dev', 'expo', 'react-native'],
-    is_archived: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-  },
-  {
-    id: 'sample-link-2',
-    owner_id: 'local-user',
-    type: 'link',
-    title: 'Supabase Postgres Best Practices',
-    content: 'RLS policies, performance tuning, and declarative schemas.',
-    url: 'https://supabase.com/docs/guides/database',
-    image_path: null,
-    tags: ['database', 'supabase', 'security'],
-    is_archived: false,
-    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
-  },
-  {
-    id: 'sample-archived-1',
-    owner_id: 'local-user',
-    type: 'note',
-    title: 'Grocery list from last week',
-    content: 'Oat milk, avocados, dark chocolate, coffee beans.',
-    url: null,
-    image_path: null,
-    tags: ['personal'],
-    is_archived: true,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-  },
-];
-
 export function ItemsProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<SavedItem[]>(INITIAL_MOCK_ITEMS);
+  const auth = useAuth();
+  const userId = auth?.user?.id;
+
+  const [items, setItems] = useState<SavedItem[]>([]);
   const [filter, setFilter] = useState<FilterCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
   const refreshItems = useCallback(async () => {
+    if (!userId) {
+      setItems([]);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      // In Stage 1: mock simulated refresh delay
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      const userItems = await fetchUserItems(userId);
+      setItems(userItems);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh items');
+      console.error('Error fetching items from Supabase:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch items');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [userId]);
 
-  const createItem = useCallback(async (input: CreateItemInput): Promise<SavedItem> => {
-    const newItem: SavedItem = {
-      id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      owner_id: 'local-user',
-      type: input.type,
-      title: input.title.trim(),
-      content: input.content?.trim() ?? '',
-      url: input.type === 'link' ? (input.url?.trim() ?? null) : null,
-      image_path: input.type === 'image' ? (input.image_path ?? null) : null,
-      tags: input.tags ?? [],
-      is_archived: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+  // Automatically fetch items when user signs in
+  useEffect(() => {
+    if (!userId) return;
+
+    let isCurrent = true;
+
+    const loadItems = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const userItems = await fetchUserItems(userId);
+        if (isCurrent) {
+          setItems(userItems);
+        }
+      } catch (err) {
+        if (isCurrent) {
+          console.error('Error fetching items from Supabase:', err);
+          setError(err instanceof Error ? err.message : 'Failed to fetch items');
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      }
     };
 
-    setItems((prev) => [newItem, ...prev]);
-    return newItem;
-  }, []);
+    loadItems();
 
-  const updateItem = useCallback(
-    async (id: string, input: UpdateItemInput): Promise<SavedItem> => {
-      let updated: SavedItem | undefined;
+    return () => {
+      isCurrent = false;
+    };
+  }, [userId]);
 
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.id === id) {
-            updated = {
-              ...item,
-              title: input.title !== undefined ? input.title.trim() : item.title,
-              content: input.content !== undefined ? input.content.trim() : item.content,
-              url: input.url !== undefined ? input.url : item.url,
-              image_path: input.image_path !== undefined ? input.image_path : item.image_path,
-              tags: input.tags !== undefined ? input.tags : item.tags,
-              is_archived: input.is_archived !== undefined ? input.is_archived : item.is_archived,
-              updated_at: new Date().toISOString(),
-            };
-            return updated;
-          }
-          return item;
-        })
-      );
-
-      if (!updated) {
-        throw new Error('Item not found');
+  const getSignedUrl = useCallback(
+    async (imagePath: string): Promise<string | null> => {
+      if (!imagePath) return null;
+      if (signedUrls[imagePath]) {
+        return signedUrls[imagePath];
       }
-      return updated;
+      const url = await getSignedImageUrl(imagePath);
+      if (url) {
+        setSignedUrls((prev) => ({ ...prev, [imagePath]: url }));
+      }
+      return url;
     },
-    []
+    [signedUrls]
   );
 
-  const deleteItem = useCallback(async (id: string): Promise<void> => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  }, []);
+  const createItem = useCallback(
+    async (input: CreateItemInput & { imageUri?: string | null }): Promise<SavedItem> => {
+      if (!userId) {
+        throw new Error('You must be signed in to save items.');
+      }
 
-  const toggleArchive = useCallback(async (id: string): Promise<void> => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
-            is_archived: !item.is_archived,
-            updated_at: new Date().toISOString(),
-          };
-        }
-        return item;
-      })
-    );
-  }, []);
+      let uploadedPath: string | null = null;
+      if (input.type === 'image' && input.imageUri) {
+        const uploadResult = await uploadImage({
+          userId,
+          localUri: input.imageUri,
+        });
+        uploadedPath = uploadResult.imagePath;
+      }
+
+      const created = await createSavedItem({
+        userId,
+        input: {
+          ...input,
+          image_path: uploadedPath ?? input.image_path,
+        },
+      });
+
+      setItems((prev) => [created, ...prev]);
+      return created;
+    },
+    [userId]
+  );
+
+  const updateItem = useCallback(
+    async (id: string, input: UpdateItemInput & { imageUri?: string | null }): Promise<SavedItem> => {
+      if (!userId) {
+        throw new Error('You must be signed in to edit items.');
+      }
+
+      const { imageUri, ...updateInput } = input;
+      let finalInput = { ...updateInput };
+
+      // If a new local image was picked, upload it
+      if (imageUri) {
+        const uploadResult = await uploadImage({
+          userId,
+          localUri: imageUri,
+        });
+        finalInput.image_path = uploadResult.imagePath;
+      }
+
+      const updated = await updateSavedItem({
+        userId,
+        itemId: id,
+        input: finalInput,
+      });
+
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      return updated;
+    },
+    [userId]
+  );
+
+  const deleteItem = useCallback(
+    async (id: string): Promise<void> => {
+      if (!userId) {
+        throw new Error('You must be signed in to delete items.');
+      }
+
+      const existing = items.find((i) => i.id === id);
+
+      await deleteSavedItem({
+        userId,
+        itemId: id,
+      });
+
+      if (existing?.image_path) {
+        await deleteImage(existing.image_path);
+      }
+
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    },
+    [userId, items]
+  );
+
+  const toggleArchive = useCallback(
+    async (id: string): Promise<void> => {
+      if (!userId) {
+        throw new Error('You must be signed in to archive items.');
+      }
+
+      const target = items.find((i) => i.id === id);
+      if (!target) return;
+
+      const updated = await toggleItemArchive({
+        userId,
+        itemId: id,
+        targetArchivedState: !target.is_archived,
+      });
+
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    },
+    [userId, items]
+  );
 
   const getItemById = useCallback(
     (id: string): SavedItem | undefined => {
@@ -189,7 +240,6 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      // Archive filter check
       if (filter === 'archived') {
         if (!item.is_archived) return false;
       } else {
@@ -197,12 +247,10 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
         if (filter !== 'all' && item.type !== filter) return false;
       }
 
-      // Selected tag filter check
       if (selectedTag && !item.tags.includes(selectedTag)) {
         return false;
       }
 
-      // Search query check
       if (searchQuery.trim().length > 0) {
         const query = searchQuery.toLowerCase().trim();
         const matchesTitle = item.title.toLowerCase().includes(query);
@@ -238,6 +286,7 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
       deleteItem,
       toggleArchive,
       getItemById,
+      getSignedUrl,
     }),
     [
       items,
@@ -254,6 +303,7 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
       deleteItem,
       toggleArchive,
       getItemById,
+      getSignedUrl,
     ]
   );
 
