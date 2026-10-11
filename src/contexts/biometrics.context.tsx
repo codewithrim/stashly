@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
@@ -29,7 +31,10 @@ export function BiometricsProvider({ children }: { children: React.ReactNode }) 
       try {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
-        const savedPref = await SecureStore.getItemAsync(BIOMETRIC_PREF_KEY);
+        const savedPref =
+          Platform.OS === 'web'
+            ? await AsyncStorage.getItem(BIOMETRIC_PREF_KEY)
+            : await SecureStore.getItemAsync(BIOMETRIC_PREF_KEY);
         const enabled = savedPref === 'true';
 
         if (isCurrent) {
@@ -81,7 +86,11 @@ export function BiometricsProvider({ children }: { children: React.ReactNode }) 
       });
 
       if (result.success) {
-        await SecureStore.setItemAsync(BIOMETRIC_PREF_KEY, 'true');
+        if (Platform.OS === 'web') {
+          await AsyncStorage.setItem(BIOMETRIC_PREF_KEY, 'true');
+        } else {
+          await SecureStore.setItemAsync(BIOMETRIC_PREF_KEY, 'true');
+        }
         setIsBiometricEnabled(true);
         setIsUnlocked(true);
         return true;
@@ -95,7 +104,11 @@ export function BiometricsProvider({ children }: { children: React.ReactNode }) 
 
   const disableBiometrics = async (): Promise<void> => {
     try {
-      await SecureStore.deleteItemAsync(BIOMETRIC_PREF_KEY);
+      if (Platform.OS === 'web') {
+        await AsyncStorage.removeItem(BIOMETRIC_PREF_KEY);
+      } else {
+        await SecureStore.deleteItemAsync(BIOMETRIC_PREF_KEY);
+      }
       setIsBiometricEnabled(false);
       setIsUnlocked(true);
     } catch (err) {
