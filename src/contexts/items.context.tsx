@@ -15,6 +15,11 @@ import {
   toggleItemArchive,
 } from '@/services/items.service';
 import { uploadImage, getSignedImageUrl, deleteImage } from '@/services/storage.service';
+import {
+  enqueueMutation,
+  getQueuedMutations,
+  removeQueuedMutation,
+} from '@/services/queue.service';
 import { useAuth } from './auth.context';
 
 interface ItemsContextType {
@@ -30,6 +35,7 @@ interface ItemsContextType {
   isLoading: boolean;
   error: string | null;
   refreshItems: () => Promise<void>;
+  syncOfflineQueue: () => Promise<void>;
   createItem: (input: CreateItemInput & { imageUri?: string | null }) => Promise<SavedItem>;
   updateItem: (id: string, input: UpdateItemInput & { imageUri?: string | null }) => Promise<SavedItem>;
   deleteItem: (id: string) => Promise<void>;
@@ -119,6 +125,31 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
     [signedUrls]
   );
 
+  const syncOfflineQueue = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const queued = await getQueuedMutations();
+      const userQueued = queued.filter((m) => m.userId === userId);
+
+      for (const item of userQueued) {
+        try {
+          const created = await createSavedItem({
+            userId,
+            input: item.input,
+          });
+          setItems((prev) => [created, ...prev.filter((p) => p.id !== item.id)]);
+          await removeQueuedMutation(item.id);
+        } catch (err) {
+          console.warn('Failed to replay queued mutation:', err);
+          break; // Stop replaying if still offline or network failing
+        }
+      }
+    } catch (err) {
+      console.warn('Error syncing offline queue:', err);
+    }
+  }, [userId]);
+
   const createItem = useCallback(
     async (input: CreateItemInput & { imageUri?: string | null }): Promise<SavedItem> => {
       if (!userId) {
@@ -127,23 +158,58 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
 
       let uploadedPath: string | null = null;
       if (input.type === 'image' && input.imageUri) {
-        const uploadResult = await uploadImage({
-          userId,
-          localUri: input.imageUri,
-        });
-        uploadedPath = uploadResult.imagePath;
+        try {
+          const uploadResult = await uploadImage({
+            userId,
+            localUri: input.imageUri,
+          });
+          uploadedPath = uploadResult.imagePath;
+        } catch (uploadErr) {
+          console.warn('Image upload error (saving with local reference):', uploadErr);
+          uploadedPath = input.imageUri;
+        }
       }
 
-      const created = await createSavedItem({
-        userId,
-        input: {
-          ...input,
-          image_path: uploadedPath ?? input.image_path,
-        },
-      });
+      try {
+        const created = await createSavedItem({
+          userId,
+          input: {
+            ...input,
+            image_path: uploadedPath ?? input.image_path,
+          },
+        });
 
-      setItems((prev) => [created, ...prev]);
-      return created;
+        setItems((prev) => [created, ...prev]);
+        return created;
+      } catch (networkError) {
+        // Enqueue mutation locally if cloud write fails (e.g. offline)
+        console.warn('Network error saving to cloud, buffering in offline queue:', networkError);
+        const queued = await enqueueMutation({
+          userId,
+          input: {
+            ...input,
+            image_path: uploadedPath ?? input.image_path,
+          },
+        });
+
+        // Optimistic local item
+        const optimisticItem: SavedItem = {
+          id: queued.id,
+          owner_id: userId,
+          type: input.type,
+          title: input.title,
+          content: input.content || '',
+          url: input.url || null,
+          image_path: uploadedPath ?? input.image_path ?? null,
+          tags: input.tags || [],
+          is_archived: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setItems((prev) => [optimisticItem, ...prev]);
+        return optimisticItem;
+      }
     },
     [userId]
   );
@@ -281,6 +347,7 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       error,
       refreshItems,
+      syncOfflineQueue,
       createItem,
       updateItem,
       deleteItem,
@@ -298,6 +365,7 @@ export function ItemsProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       error,
       refreshItems,
+      syncOfflineQueue,
       createItem,
       updateItem,
       deleteItem,

@@ -20,11 +20,13 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { ItemListSkeleton } from '@/components/ui/LoadingSkeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTheme } from '@/hooks/use-theme';
+import { useBiometrics } from '@/contexts/biometrics.context';
 import { BorderRadius, Spacing, TouchTarget, Typography } from '@/constants/theme';
 import { SavedItem } from '@/types/item';
 
 export default function InboxScreen() {
   const theme = useTheme();
+  const { isSupported, isBiometricEnabled, enableBiometrics, disableBiometrics } = useBiometrics();
   const {
     filteredItems,
     filter,
@@ -134,19 +136,48 @@ export default function InboxScreen() {
           </Text>
         </View>
 
-        {user && (
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-            hitSlop={12}
-            onPress={() => setShowLogoutDialog(true)}
-            style={[
-              styles.userLogoutBtn,
-              { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-            ]}>
-            <Ionicons name="log-out-outline" size={18} color={theme.textSecondary} />
-          </TouchableOpacity>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {isSupported && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={isBiometricEnabled ? 'Disable biometric lock' : 'Enable biometric lock'}
+              hitSlop={12}
+              onPress={() => {
+                if (isBiometricEnabled) {
+                  disableBiometrics();
+                } else {
+                  enableBiometrics();
+                }
+              }}
+              style={[
+                styles.userLogoutBtn,
+                {
+                  backgroundColor: isBiometricEnabled ? theme.badgeNote : theme.backgroundElement,
+                  borderColor: theme.border,
+                },
+              ]}>
+              <Ionicons
+                name={isBiometricEnabled ? 'shield-checkmark' : 'shield-outline'}
+                size={18}
+                color={isBiometricEnabled ? theme.primary : theme.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+
+          {user && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              hitSlop={12}
+              onPress={() => setShowLogoutDialog(true)}
+              style={[
+                styles.userLogoutBtn,
+                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+              ]}>
+              <Ionicons name="log-out-outline" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Search Bar */}

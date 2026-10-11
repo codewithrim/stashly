@@ -15,3 +15,10 @@ jest.mock('expo-secure-store', () => {
     }),
   };
 });
+
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: jest.fn(async () => true),
+  isEnrolledAsync: jest.fn(async () => true),
+  supportedAuthenticationTypesAsync: jest.fn(async () => [1, 2]),
+  authenticateAsync: jest.fn(async () => ({ success: true })),
+}));

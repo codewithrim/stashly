@@ -15,19 +15,24 @@ export default function NewItemScreen() {
     text?: string;
     title?: string;
     type?: 'note' | 'link' | 'image';
+    imageUri?: string;
+    fileUri?: string;
   }>();
 
+  const sharedImage = params.imageUri || params.fileUri || null;
   const detectedUrl = params.url || (params.text ? extractFirstUrl(params.text) : null);
-  const isLink = Boolean(detectedUrl);
+  const isLink = Boolean(detectedUrl) && !sharedImage;
+  const isImage = Boolean(sharedImage);
 
   const sharedUrl = detectedUrl || '';
   const sharedText = detectedUrl && params.text ? params.text.replace(detectedUrl, '').trim() : (params.text || '');
 
   const initialValues: Partial<ItemFormValues> = {
-    type: params.type || (isLink ? 'link' : 'note'),
-    title: params.title || '',
+    type: params.type || (isImage ? 'image' : isLink ? 'link' : 'note'),
+    title: params.title || (isImage ? 'Shared Image' : ''),
     url: sharedUrl,
     content: sharedText,
+    imageUri: sharedImage,
   };
 
   const handleSubmit = async (values: ItemFormValues) => {

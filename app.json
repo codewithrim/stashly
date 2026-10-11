@@ -28,6 +28,15 @@
               "mimeType": "text/plain"
             }
           ]
+        },
+        {
+          "action": "SEND",
+          "category": ["DEFAULT"],
+          "data": [
+            {
+              "mimeType": "image/*"
+            }
+          ]
         }
       ]
     },
