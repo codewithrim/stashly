@@ -77,6 +77,55 @@ Instead of scattering interesting articles, quick thoughts, and image references
 
 ---
 
+## Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph Mobile App (Client)
+        UI[Expo Router Screens\nInbox / Detail / Form / Auth]
+        Bio[Biometric Lock Guard\nexpo-local-authentication]
+        Context[State Managers\nItemsContext / AuthContext]
+        DraftStore[(Local Drafts & Queue\nAsyncStorage)]
+        KeyStore[(Session Token Vault\nexpo-secure-store)]
+    end
+
+    subgraph OS & External Apps
+        Share[Android System Share Sheet\ntext/plain & image/* intents]
+    end
+
+    subgraph Supabase Cloud Backend
+        AuthService[Supabase Auth\nJWT Verification & Sessions]
+        Postgres[(PostgreSQL Database\nsaved_items table)]
+        RLS{Row Level Security\nauth.uid() == owner_id}
+        StorageBucket[(Supabase Storage\nsaved-items bucket)]
+    end
+
+    Share -->|SEND Intent with URL/Image| UI
+    UI <--> Bio
+    UI <--> Context
+    Context <--> DraftStore
+    Context <--> KeyStore
+    Context -->|Authenticated API Requests with JWT| AuthService
+    AuthService -->|Verified User ID| Postgres
+    Postgres --> RLS
+    Context -->|Signed URL / Uploads| StorageBucket
+```
+
+### Security & Data Isolation Architecture
+
+- **Where Data is Stored**:
+  - **Cloud Database**: All saved items reside in a PostgreSQL table (`saved_items`) hosted on Supabase.
+  - **Cloud Media**: Images are stored in the private `saved-items` Supabase Storage bucket under user-isolated paths (`${userId}/${filename}`).
+  - **Client Tokens**: Access and refresh tokens are securely stored in hardware-encrypted storage using `expo-secure-store`.
+  - **Local Drafts & Offline Mutations**: Non-sensitive temporary drafts and offline write queues reside in `AsyncStorage`.
+- **How One User's Data is Protected From Another (Row Level Security)**:
+  - Protection is enforced at the PostgreSQL database engine level using Row Level Security policies (`ENABLE ROW LEVEL SECURITY`).
+  - Policies enforce that every `SELECT`, `INSERT`, `UPDATE`, and `DELETE` query strictly requires `auth.uid() = owner_id`.
+  - Even if an attacker manipulates the client code, modifies item IDs, or directly issues API queries using another user's item ID, PostgreSQL rejects the request (`permission denied for table saved_items`). Client-side filtering is never relied upon as a security boundary.
+  - Verified live via `node scripts/verify-live-rls.js`.
+
+---
+
 ## Project Structure
 
 ```text
